@@ -45,3 +45,18 @@ export const formatMeter = (tokens: number | undefined, limit: number): string =
 
   return `컨텍스트 ${renderBar(percent)} ${percent}% · ${formatTokens(tokens)}/${formatTokens(limit)}`
 }
+
+export const WARN_PERCENTS = [80, 90] as const
+
+// 이전 측정에서 이번 측정 사이에 새로 넘은 경고 % — 이전 값이 없으면(첫 측정) 기준선만 잡는다
+export const crossedPercents = (previous: number | undefined, current: number): number[] => {
+  if (previous === undefined) {
+    return []
+  }
+
+  return WARN_PERCENTS.filter(percent => previous < percent && current >= percent)
+}
+
+// 경고 토스트 문구 — 기준이 자동 압축 임계치인지 모델 윈도우인지 밝힌다
+export const formatWarning = (percent: number, tokens: number, limit: number, isCompactBasis: boolean): string =>
+  `컨텍스트 ${percent}% 도달 — ${isCompactBasis ? '자동 압축 기준' : '모델 윈도우'} ${formatTokens(limit)} 중 ${formatTokens(tokens)} 사용`

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { formatMeter, formatTokens, resolveLimit } from '../hooks/meter.ts'
+import { crossedPercents, formatMeter, formatTokens, resolveLimit } from '../hooks/meter.ts'
 
 describe('토큰 표기', () => {
   test('[갈래1-1] 정수 천 단위는 소수점 없이 k 로 쓴다', () => {
@@ -41,5 +41,30 @@ describe('% 기준', () => {
 
   test('[갈래2-1] 기준을 넘으면 막대는 가득 차고 % 는 그대로 보인다', () => {
     expect(formatMeter(176_000, 160_000)).toBe('컨텍스트 ██████████ 110% · 176k/160k')
+  })
+})
+
+describe('임계치 경고', () => {
+  test('[갈래4-1] 80% 를 아래에서 위로 넘으면 80 을 낸다', () => {
+    expect(crossedPercents(70, 82)).toEqual([80])
+  })
+
+  test('[갈래4-2] 90% 를 넘으면 90 을, 한 번에 둘 다 넘으면 둘 다 낸다', () => {
+    expect(crossedPercents(85, 91)).toEqual([90])
+    expect(crossedPercents(70, 95)).toEqual([80, 90])
+  })
+
+  test('[갈래4-3] 이미 넘은 구간 안에서 다시 재면 아무것도 내지 않는다', () => {
+    expect(crossedPercents(82, 85)).toEqual([])
+    expect(crossedPercents(80, 80)).toEqual([])
+  })
+
+  test('[갈래4-4] 아래로 내려갔다가 다시 넘으면 다시 낸다', () => {
+    expect(crossedPercents(85, 40)).toEqual([])
+    expect(crossedPercents(40, 81)).toEqual([80])
+  })
+
+  test('[갈래4-5] 이전 값이 없는 첫 측정은 기준선만 잡고 내지 않는다', () => {
+    expect(crossedPercents(undefined, 95)).toEqual([])
   })
 })

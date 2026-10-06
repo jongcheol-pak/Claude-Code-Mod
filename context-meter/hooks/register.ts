@@ -1,6 +1,6 @@
 import type { EngineInterface, Register, SessionContextUsage } from 'claude-code'
 
-import { formatMeter, resolveLimit } from './meter.ts'
+import { crossedPercents, formatMeter, formatWarning, percentOf, resolveLimit } from './meter.ts'
 
 const COMMAND = 'context-meter'
 const ENABLED_KEY = 'isEnabled'
@@ -10,16 +10,37 @@ const USAGE = `사용법: /${COMMAND} [on|off] — 인자 없이 실행하면 �
 const isEnabled = async ($: EngineInterface): Promise<boolean> =>
   (await $.store.get(ENABLED_KEY)) !== false
 
-// 자동 압축 임계치는 측정 이벤트에 없어 breakdown(로컬 추정, API 요청 없음)에서 읽는다
-const readLimit = async ($: EngineInterface, window: number): Promise<number> => {
-  const { context } = await $.session.usage({ breakdown: 'summary' })
+type Basis = { limit: number; isCompactBasis: boolean }
 
-  return resolveLimit(window, context.breakdown?.autoCompactThreshold)
+// 자동 압축 임계치는 측정 이벤트에 없어 breakdown(로컬 추정, API 요청 없음)에서 읽는다
+const readBasis = async ($: EngineInterface, window: number): Promise<Basis> => {
+  const { context } = await $.session.usage({ breakdown: 'summary' })
+  const threshold = context.breakdown?.autoCompactThreshold
+
+  return { limit: resolveLimit(window, threshold), isCompactBasis: threshold !== undefined }
+}
+
+// 경고 기준선(직전 측정의 %) — 재로드·clear 직후에는 비어 있어 첫 측정은 기준선만 잡는다
+let lastPercent: number | undefined
+
+const warnCrossings = ($: EngineInterface, tokens: number | undefined, basis: Basis): void => {
+  if (tokens === undefined) {
+    return
+  }
+
+  const percent = percentOf(tokens, basis.limit)
+
+  for (const crossed of crossedPercents(lastPercent, percent)) {
+    $.ui.toast(formatWarning(crossed, tokens, basis.limit, basis.isCompactBasis))
+  }
+
+  lastPercent = percent
 }
 
 const showContext = async ($: EngineInterface, context: SessionContextUsage): Promise<void> => {
-  const limit = await readLimit($, context.window)
-  $.ui.status(formatMeter(context.tokens, limit))
+  const basis = await readBasis($, context.window)
+  $.ui.status(formatMeter(context.tokens, basis.limit))
+  warnCrossings($, context.tokens, basis)
 }
 
 const showCurrent = async ($: EngineInterface): Promise<void> => {
@@ -72,7 +93,13 @@ export const register: Register = on => {
   on('classic.SessionStart', async ($, e, next) => {
     const result = await next(e)
 
-    if (e.source === 'clear' && (await isEnabled($))) {
+    if (e.source !== 'clear') {
+      return result
+    }
+
+    lastPercent = undefined
+
+    if (await isEnabled($)) {
       await showCurrent($)
     }
 

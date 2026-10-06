@@ -218,3 +218,39 @@ test('[갈래3-5] 표시가 꺼져 있으면 압축·clear 뒤에도 그리지 �
 
   expect(shown).toEqual([])
 })
+
+// 기준 160k 에서 지정한 % 가 되는 측정 이벤트
+const measureAt = (percent: number) => ({
+  context: { tokens: 1_600 * percent, window: 200_000 },
+  rateLimits: [],
+  changed: ['context' as const],
+})
+
+test('[갈래4-6] 측정이 80% 를 넘는 순간 토스트를 한 번 띄우고 같은 구간에서는 다시 띄우지 않는다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  const toasts: string[] = []
+  stubEngine(on, shown)
+  on('ui.toast', ($, e) => { toasts.push(e.text); return null as never })
+  mock.store(on)
+
+  await $.session.measure(measureAt(70))
+  await $.session.measure(measureAt(82))
+  await $.session.measure(measureAt(85))
+
+  expect(toasts).toEqual(['컨텍스트 80% 도달 — 자동 압축 기준 160k 중 131.2k 사용'])
+})
+
+test('[갈래3-6] /clear 뒤 첫 측정은 기준선만 다시 잡아 토스트를 띄우지 않는다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  const toasts: string[] = []
+  stubEngine(on, shown)
+  stubCompaction(on)
+  on('ui.toast', ($, e) => { toasts.push(e.text); return null as never })
+  mock.store(on)
+
+  await $.session.measure(measureAt(70))
+  await $.classic.SessionStart({ source: 'clear' })
+  await $.session.measure(measureAt(85))
+
+  expect(toasts).toEqual([])
+})
