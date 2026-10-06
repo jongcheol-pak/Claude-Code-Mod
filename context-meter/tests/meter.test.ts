@@ -2,6 +2,8 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import {
   composeStatus,
+  detailHeader,
+  detailRows,
   crossedPercents,
   estimateTurns,
   formatMeter,
@@ -133,5 +135,30 @@ describe('비용·플랜 한도', () => {
   test('[갈래6-3] 켜도 값이 없으면(구독 아님·비용 장부 없음) 생략한다', () => {
     expect(composeStatus({ tokens: 84_000, limit: 160_000, growth: [], rateLimits: [], display: readDisplay({ show_delta: false, show_cost: true, show_rate_limits: true }) }))
       .toBe('컨텍스트 █████░░░░░ 53% · 84k/160k')
+  })
+})
+
+describe('내역 패널', () => {
+  test('[갈래7-1] 사용 행은 기준 대비 %, 남은 공간·압축 예비분은 토큰만, 지연 로드 행은 맨 뒤에 표시만 한다', () => {
+    const rows = detailRows([
+      { name: 'Free space', tokens: 70_000, kind: 'free' },
+      { name: 'MCP tools (deferred)', tokens: 12_000, kind: 'deferred' },
+      { name: 'System prompt', tokens: 8_000, kind: 'used' },
+      { name: 'Messages', tokens: 50_000, kind: 'used' },
+      { name: 'Autocompact buffer', tokens: 32_000, kind: 'buffer' },
+    ], 160_000)
+
+    expect(rows).toEqual([
+      { name: 'Free space', tokens: '70k' },
+      { name: 'System prompt', tokens: '8k', percent: '5%' },
+      { name: 'Messages', tokens: '50k', percent: '31%' },
+      { name: 'Autocompact buffer', tokens: '32k' },
+      { name: 'MCP tools (deferred) · 지연 로드', tokens: '12k' },
+    ])
+  })
+
+  test('[갈래7-1] 머리줄은 합계와 기준 종류를 밝힌다', () => {
+    expect(detailHeader(58_000, 160_000, true)).toBe('사용 58k / 자동 압축 기준 160k (36%)')
+    expect(detailHeader(58_000, 200_000, false)).toBe('사용 58k / 모델 윈도우 200k (29%)')
   })
 })

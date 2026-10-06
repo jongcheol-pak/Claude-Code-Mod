@@ -141,3 +141,33 @@ export const composeStatus = (input: StatusInput): string => {
 
   return parts.filter(part => part !== undefined).join(' · ')
 }
+
+// 내역 패널의 한 줄 — % 는 사용 중인 행에만, 지연 로드 행은 합계 밖이라 표시만 한다
+export type DetailRow = { name: string; tokens: string; percent?: string }
+
+export type DetailCategory = { name: string; tokens: number; kind: 'used' | 'free' | 'buffer' | 'deferred' }
+
+const toDetailRow = (category: DetailCategory, rawMaxTokens: number): DetailRow => {
+  const tokens = formatTokens(category.tokens)
+
+  if (category.kind === 'used') {
+    return { name: category.name, tokens, percent: `${percentOf(category.tokens, rawMaxTokens)}%` }
+  }
+
+  if (category.kind === 'deferred') {
+    return { name: `${category.name} · 지연 로드`, tokens }
+  }
+
+  return { name: category.name, tokens }
+}
+
+// 엔진 순서를 지키되 지연 로드 행(합계 밖)은 맨 뒤로 보낸다
+export const detailRows = (categories: readonly DetailCategory[], rawMaxTokens: number): DetailRow[] => {
+  const inWindow = categories.filter(category => category.kind !== 'deferred')
+  const deferred = categories.filter(category => category.kind === 'deferred')
+
+  return [...inWindow, ...deferred].map(category => toDetailRow(category, rawMaxTokens))
+}
+
+export const detailHeader = (totalTokens: number, rawMaxTokens: number, isCompactBasis: boolean): string =>
+  `사용 ${formatTokens(totalTokens)} / ${isCompactBasis ? '자동 압축 기준' : '모델 윈도우'} ${formatTokens(rawMaxTokens)} (${percentOf(totalTokens, rawMaxTokens)}%)`

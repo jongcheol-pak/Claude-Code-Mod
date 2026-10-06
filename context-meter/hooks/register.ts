@@ -1,8 +1,11 @@
 import type { EngineInterface, Register, SessionUsage } from 'claude-code'
 
+import { renderDetailPane } from './detail-pane.tsx'
 import {
   composeStatus,
   crossedPercents,
+  detailHeader,
+  detailRows,
   formatWarning,
   percentOf,
   readDisplay,
@@ -13,7 +16,8 @@ import type { Display } from './meter.ts'
 
 const COMMAND = 'context-meter'
 const ENABLED_KEY = 'isEnabled'
-const USAGE = `사용법: /${COMMAND} [on|off] — 인자 없이 실행하면 켜고 끄기를 전환한다`
+const USAGE = `사용법: /${COMMAND} [on|off|detail] — 인자 없이 실행하면 켜고 끄기를 전환, detail 은 카테고리별 내역 패널`
+const PANE_ID = 'context-meter-detail'
 
 // 켜짐/꺼짐은 세션을 넘어 유지된다 — 한 번도 끈 적 없으면 켜짐
 const isEnabled = async ($: EngineInterface): Promise<boolean> =>
@@ -98,8 +102,8 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: '상태 줄의 컨텍스트 사용량 표시를 켜거나 끈다',
-      argumentHint: '[on|off]',
+      description: '상태 줄의 컨텍스트 사용량 표시를 켜거나 끄고, detail 로 내역 패널을 연다',
+      argumentHint: '[on|off|detail]',
     })
 
     if (await isEnabled($)) {
@@ -124,6 +128,10 @@ export const register: Register = (on, options) => {
       }
 
       draw($, e, basis)
+
+      if (isContextChange) {
+        $.ui.invalidate('ui.render')
+      }
     }
 
     return next(e)
@@ -158,8 +166,29 @@ export const register: Register = (on, options) => {
     return result
   }).catch(passThrough)
 
+  // 내역 패널 — 열릴 때와 측정 뒤 다시 그릴 때마다 최신 내역을 읽는다
+  on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e) => {
+    const { context } = await $.session.usage({ breakdown: 'summary' })
+    const elements = $.ui.resolve(e)
+
+    if (context.breakdown === undefined) {
+      return renderDetailPane(elements, '내역을 읽을 수 없습니다', [])
+    }
+
+    const { categories, totalTokens, rawMaxTokens, autoCompactThreshold } = context.breakdown
+    const header = detailHeader(totalTokens, rawMaxTokens, autoCompactThreshold !== undefined)
+
+    return renderDetailPane(elements, header, detailRows(categories, rawMaxTokens))
+  })
+
   on('command.run', { command: COMMAND }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
+
+    if (arg === 'detail') {
+      const opened = await $.ui.open({ id: PANE_ID, title: '컨텍스트 내역' })
+
+      return { text: opened.isPlaced ? '컨텍스트 내역 패널을 열었습니다' : `내역 패널을 열지 못했습니다: ${opened.reason}` }
+    }
 
     if (arg !== '' && arg !== 'on' && arg !== 'off') {
       return { text: USAGE }

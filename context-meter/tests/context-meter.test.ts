@@ -311,3 +311,71 @@ test('[갈래3-7] /clear 뒤에는 증가량 이력을 비운다', async ($, on)
 
   expect(shown.at(-1)).toBe('컨텍스트 ██████░░░░ 56% · 90k/160k')
 })
+
+const PANE_ID = 'context-meter-detail'
+
+// 패널이 읽는 내역 — 카테고리와 합계를 채운 대역
+const stubDetail = (on: On): void => {
+  on('session.usage', () => ({
+    value: {
+      startedAt: 0,
+      context: {
+        tokens: 58_000,
+        window: 200_000,
+        breakdown: {
+          ...breakdown(160_000),
+          totalTokens: 58_000,
+          categories: [
+            { name: 'System prompt', tokens: 8_000, color: 'promptBorder', isDeferred: false, kind: 'used' as const },
+            { name: 'Messages', tokens: 50_000, color: 'permission', isDeferred: false, kind: 'used' as const },
+            { name: 'Free space', tokens: 102_000, color: 'inactive', isDeferred: false, kind: 'free' as const },
+          ],
+        },
+      },
+      rateLimits: [],
+    },
+  }))
+}
+
+test('[갈래7-2] /context-meter detail 은 내역 패널을 연다', async ($, on) => {
+  const opened: string[] = []
+  stubEngine(on, [])
+  on('ui.open', ($, e) => { opened.push(e.id); return { value: { isPlaced: true as const } } })
+  mock.store(on)
+
+  const result = await $.command.run({ ...RUN, args: 'detail' })
+
+  expect(opened).toEqual([PANE_ID])
+  expect(result.text).toBe('컨텍스트 내역 패널을 열었습니다')
+})
+
+test('[갈래7-3] 내역 패널은 terminal·desktop 모두 머리줄과 카테고리 행을 그린다', async ($, on) => {
+  stubDetail(on)
+  mock.store(on)
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({
+      plugin: 'context-meter',
+      surface,
+      component: 'Pane',
+      requestId: PANE_ID,
+      props: { title: '컨텍스트 내역', isFocused: false, bodyColumns: 60, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} },
+    })
+
+    // Text 의 key 는 그려진 트리에 남지 않아 문구로 찾는다
+    expect((await ui.find({ type: 'Text', text: /^사용 / }))?.text).toBe('사용 58k / 자동 압축 기준 160k (36%)')
+    expect((await ui.find({ type: 'Text', text: /Messages/ }))?.text).toContain('31%')
+    await ui.unmount()
+  }
+})
+
+test('[갈래7-4] 컨텍스트 측정 뒤 패널을 다시 그리도록 요청한다', async ($, on) => {
+  const invalidated: string[] = []
+  stubEngine(on, [])
+  on('ui.invalidate', ($, e) => { invalidated.push(e.event); return null as never })
+  mock.store(on)
+
+  await $.session.measure(MEASURE)
+
+  expect(invalidated).toEqual(['ui.render'])
+})
