@@ -447,11 +447,12 @@ test('[갈래8-6] 압축이 거부되거나 건너뛰면 토스트를 한 번 �
   expect(toasts.filter(text => text.startsWith('자동 압축'))).toHaveLength(2)
 })
 
-test('[갈래8-7] 재로드 직후 첫 측정이 이미 N% 이상이면 압축한다', AUTO_ON, async ($, on) => {
+test('[갈래8-7] 재로드 직후 첫 측정이 이미 N% 이상이면 압축하고, 건너뛰면 그 사유를 알린다', AUTO_ON, async ($, on) => {
   const calls: string[] = []
+  const toasts: string[] = []
   stubEngine(on, [])
   stubAutoCompaction(on, 'skipped', calls)
-  on('ui.toast', () => null as never)
+  on('ui.toast', ($, e) => { toasts.push(e.text); return null as never })
   const clock = mock.clock(on)
   mock.store(on)
 
@@ -459,4 +460,19 @@ test('[갈래8-7] 재로드 직후 첫 측정이 이미 N% 이상이면 압축�
   await clock.advance(1_000)
 
   expect(calls).toEqual(['compact'])
+  expect(toasts).toContain('자동 압축을 건너뛰었습니다: vetoed')
+})
+
+test('[갈래6-6] show_rate_limits 를 켜면 플랜 한도만 바뀐 측정에도 다시 그린다', { options: { show_rate_limits: true } }, async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  mock.store(on)
+
+  await $.session.measure({
+    context: { tokens: 84_000, window: 200_000 },
+    rateLimits: [{ kind: 'five_hour', percentUsed: 41 }],
+    changed: ['rateLimits'],
+  })
+
+  expect(shown).toEqual(['컨텍스트 █████░░░░░ 53% · 84k/160k · 5h 41%'])
 })
