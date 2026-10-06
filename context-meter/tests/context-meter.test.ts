@@ -153,3 +153,68 @@ test('[갈래9-4] 알 수 없는 인자는 사용법을 보여 주고 상태를 
   expect(result.text).toContain('사용법')
   expect(shown).toEqual([])
 })
+
+// 압축 결과는 메시지를 하나 이상 남겨야 한다 — 요약 한 줄로 대신한다
+const SUMMARY = [{ role: 'user' as const, text: '요약', toolUses: [] }]
+
+// 압축 대역 — 엔진이 요약을 설치한 것처럼 답한다 · clear 의 classic SessionStart 도 답한다
+const stubCompaction = (on: On): void => {
+  on('session.compact', () => ({ messages: SUMMARY }))
+  on('classic.SessionStart', () => ({}))
+}
+
+test('[갈래3-1] 메인 대화 압축이 끝나면 상태 줄을 다시 그린다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  stubCompaction(on)
+  mock.store(on)
+
+  await $.session.compact({ trigger: 'manual', messages: SUMMARY })
+
+  expect(shown).toEqual(['컨텍스트 ███░░░░░░░ 31% · 50k/160k'])
+})
+
+test('[갈래3-2] 미리 계산하는 precompute 압축에는 다시 그리지 않는다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  stubCompaction(on)
+  mock.store(on)
+
+  await $.session.compact({ trigger: 'precompute', messages: SUMMARY })
+
+  expect(shown).toEqual([])
+})
+
+test('[갈래3-3] 서브에이전트 압축에는 다시 그리지 않는다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  stubCompaction(on)
+  mock.store(on)
+
+  await $.session.compact({ trigger: 'auto', agentId: 'agent-1', messages: SUMMARY })
+
+  expect(shown).toEqual([])
+})
+
+test('[갈래3-4] /clear 직후 상태 줄을 다시 그린다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  stubCompaction(on)
+  mock.store(on)
+
+  await $.classic.SessionStart({ source: 'clear' })
+
+  expect(shown).toEqual(['컨텍스트 ███░░░░░░░ 31% · 50k/160k'])
+})
+
+test('[갈래3-5] 표시가 꺼져 있으면 압축·clear 뒤에도 그리지 않는다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  stubCompaction(on)
+  mock.store(on, { isEnabled: false })
+
+  await $.session.compact({ trigger: 'manual', messages: SUMMARY })
+  await $.classic.SessionStart({ source: 'clear' })
+
+  expect(shown).toEqual([])
+})

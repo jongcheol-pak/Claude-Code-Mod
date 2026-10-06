@@ -28,6 +28,9 @@ const showCurrent = async ($: EngineInterface): Promise<void> => {
   $.ui.status(formatMeter(context.tokens, limit))
 }
 
+// 다시 그리기가 실패해도 압축·clear 자체는 막지 않는다 — next 는 재호출해도 같은 결과를 돌려준다
+const passThrough = <E, R>($: unknown, e: E, next: (e: E) => R): R => next(e)
+
 export const register: Register = on => {
   // 세션 시작(재로드 포함) 시 명령을 등록하고, 켜져 있으면 현재 값으로 한 번 그린다
   on('session.start', async ($, e, next) => {
@@ -52,6 +55,29 @@ export const register: Register = on => {
 
     return next(e)
   })
+
+  // 압축 직후 토큰은 다음 응답 전까지 비어 있다 — 메인 대화가 실제로 압축됐을 때만 다시 그린다
+  on('session.compact', async ($, e, next) => {
+    const result = await next(e)
+    const isMainCompaction = e.agentId === undefined && e.trigger !== 'precompute' && !('skip' in result)
+
+    if (isMainCompaction && (await isEnabled($))) {
+      await showCurrent($)
+    }
+
+    return result
+  }).catch(passThrough)
+
+  // /clear 는 session.start 를 다시 부르지 않는다 — classic SessionStart(source clear)로 받는다
+  on('classic.SessionStart', async ($, e, next) => {
+    const result = await next(e)
+
+    if (e.source === 'clear' && (await isEnabled($))) {
+      await showCurrent($)
+    }
+
+    return result
+  }).catch(passThrough)
 
   on('command.run', { command: COMMAND }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
