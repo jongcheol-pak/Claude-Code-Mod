@@ -2,3 +2,5 @@
 **/.claude-plugin/types/
 **/tsconfig.json
 node_modules/
+# pjc 하네스 작업 계획 (추적하지 않음)
+plan.md
