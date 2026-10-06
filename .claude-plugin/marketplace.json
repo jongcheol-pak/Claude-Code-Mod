@@ -1,6 +1,7 @@
 {
   "name": "claude-code-mode",
   "owner": { "name": "jongcheol-pak" },
+  "description": "Claude Code 모드(함수 훅 플러그인) 모음",
   "plugins": [
     {
       "name": "context-meter",
