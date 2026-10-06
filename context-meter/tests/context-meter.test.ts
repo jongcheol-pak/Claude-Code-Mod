@@ -379,3 +379,84 @@ test('[갈래7-4] 컨텍스트 측정 뒤 패널을 다시 그리도록 요청�
 
   expect(invalidated).toEqual(['ui.render'])
 })
+
+type CompactOutcome = 'compacted' | 'skipped' | 'rejected'
+
+// 자동 압축 대역 — 호출 횟수를 센다(테스트 키트에서는 플러그인 호출의 trigger 가 비어 있어 trigger 로 가르지 않는다)
+const stubAutoCompaction = (on: On, outcome: CompactOutcome, calls: string[]): void => {
+  on('session.compact', () => {
+    calls.push('compact')
+
+    if (outcome === 'rejected') {
+      throw new Error('turn is running')
+    }
+
+    return outcome === 'skipped' ? { skip: 'vetoed' } : { messages: SUMMARY }
+  })
+}
+
+const AUTO_ON = { options: { auto_compact: true } }
+
+test('[갈래8-4] 자동 압축이 꺼져 있으면 N% 를 넘어도 압축하지 않는다', async ($, on) => {
+  const calls: string[] = []
+  stubEngine(on, [])
+  stubAutoCompaction(on, 'compacted', calls)
+  const clock = mock.clock(on)
+  mock.store(on)
+
+  await $.session.measure(measureAt(95))
+  await clock.advance(2_000)
+
+  expect(calls).toEqual([])
+})
+
+test('[갈래8-5] 켜져 있으면 N% 이상 측정 1초 뒤 한 번 압축하고 같은 구간에서는 다시 하지 않는다', AUTO_ON, async ($, on) => {
+  const calls: string[] = []
+  stubEngine(on, [])
+  stubAutoCompaction(on, 'compacted', calls)
+  const clock = mock.clock(on)
+  mock.store(on)
+
+  await $.session.measure(measureAt(92))
+  expect(calls).toEqual([])
+  await clock.advance(1_000)
+  await $.session.measure(measureAt(94))
+  await clock.advance(2_000)
+
+  expect(calls).toEqual(['compact'])
+})
+
+test('[갈래8-6] 압축이 거부되거나 건너뛰면 토스트를 한 번 띄우고 N 미만으로 내려가기 전까지 재시도하지 않는다', AUTO_ON, async ($, on) => {
+  const calls: string[] = []
+  const toasts: string[] = []
+  stubEngine(on, [])
+  stubAutoCompaction(on, 'rejected', calls)
+  on('ui.toast', ($, e) => { toasts.push(e.text); return null as never })
+  const clock = mock.clock(on)
+  mock.store(on)
+
+  await $.session.measure(measureAt(95))
+  await clock.advance(1_000)
+  await $.session.measure(measureAt(96))
+  await clock.advance(1_000)
+  await $.session.measure(measureAt(50))
+  await $.session.measure(measureAt(91))
+  await clock.advance(1_000)
+
+  expect(calls).toEqual(['compact', 'compact'])
+  expect(toasts.filter(text => text.startsWith('자동 압축'))).toHaveLength(2)
+})
+
+test('[갈래8-7] 재로드 직후 첫 측정이 이미 N% 이상이면 압축한다', AUTO_ON, async ($, on) => {
+  const calls: string[] = []
+  stubEngine(on, [])
+  stubAutoCompaction(on, 'skipped', calls)
+  on('ui.toast', () => null as never)
+  const clock = mock.clock(on)
+  mock.store(on)
+
+  await $.session.measure(measureAt(97))
+  await clock.advance(1_000)
+
+  expect(calls).toEqual(['compact'])
+})

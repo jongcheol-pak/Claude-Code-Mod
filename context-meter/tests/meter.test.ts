@@ -8,9 +8,11 @@ import {
   estimateTurns,
   formatMeter,
   formatTokens,
+  readAutoCompact,
   readDisplay,
   recordGrowth,
   resolveLimit,
+  shouldAutoCompact,
 } from '../hooks/meter.ts'
 import type { Display } from '../hooks/meter.ts'
 
@@ -160,5 +162,25 @@ describe('내역 패널', () => {
   test('[갈래7-1] 머리줄은 합계와 기준 종류를 밝힌다', () => {
     expect(detailHeader(58_000, 160_000, true)).toBe('사용 58k / 자동 압축 기준 160k (36%)')
     expect(detailHeader(58_000, 200_000, false)).toBe('사용 58k / 모델 윈도우 200k (29%)')
+  })
+})
+
+describe('자동 압축 판정', () => {
+  test('[갈래8-1] 기본값은 꺼짐·90% 이고 꺼져 있으면 시도하지 않는다', () => {
+    const setting = readAutoCompact({})
+
+    expect(setting).toEqual({ isEnabled: false, percent: 90 })
+    expect(shouldAutoCompact(99, setting, false)).toBe(false)
+  })
+
+  test('[갈래8-2] 켜져 있고 N% 이상이며 아직 시도하지 않았으면 시도한다', () => {
+    const setting = readAutoCompact({ auto_compact: true, auto_compact_percent: 85 })
+
+    expect(shouldAutoCompact(84, setting, false)).toBe(false)
+    expect(shouldAutoCompact(85, setting, false)).toBe(true)
+  })
+
+  test('[갈래8-3] 이미 시도한 구간에서는 다시 시도하지 않는다', () => {
+    expect(shouldAutoCompact(95, readAutoCompact({ auto_compact: true }), true)).toBe(false)
   })
 })

@@ -8,11 +8,13 @@ import {
   detailRows,
   formatWarning,
   percentOf,
+  readAutoCompact,
   readDisplay,
   recordGrowth,
   resolveLimit,
+  shouldAutoCompact,
 } from './meter.ts'
-import type { Display } from './meter.ts'
+import type { AutoCompact, Display } from './meter.ts'
 
 const COMMAND = 'context-meter'
 const ENABLED_KEY = 'isEnabled'
@@ -66,10 +68,53 @@ const trackGrowth = (tokens: number | undefined): void => {
   lastTokens = tokens
 }
 
+// N% 자동 압축 설정과 시도 표시 — N 미만으로 내려가거나 /clear 하면 다시 시도할 수 있다
+let autoCompact: AutoCompact = readAutoCompact({})
+let isCompactAttempted = false
+
+const AUTO_COMPACT_DELAY_MS = 1_000
+
+// 엔진은 턴 중의 압축을 거부한다 — 거부·건너뜀은 알리고 재시도는 구간이 바뀔 때까지 미룬다
+const runAutoCompact = async ($: EngineInterface): Promise<void> => {
+  try {
+    const result = await $.session.compact()
+
+    if ('skip' in result) {
+      $.ui.toast(`자동 압축을 건너뛰었습니다: ${result.skip}`)
+    }
+  } catch (error) {
+    $.ui.toast(`자동 압축 실패: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+// 측정 디스패치 안에서 압축을 기다리지 않도록 잠시 뒤로 예약한다
+const scheduleAutoCompact = ($: EngineInterface, tokens: number | undefined, basis: Basis): void => {
+  if (tokens === undefined) {
+    return
+  }
+
+  const percent = percentOf(tokens, basis.limit)
+
+  if (percent < autoCompact.percent) {
+    isCompactAttempted = false
+    return
+  }
+
+  if (!shouldAutoCompact(percent, autoCompact, isCompactAttempted)) {
+    return
+  }
+
+  isCompactAttempted = true
+  $.clock.after(AUTO_COMPACT_DELAY_MS, () => {
+    void runAutoCompact($)
+  })
+}
+
 const resetHistory = (): void => {
   growth = []
   lastTokens = undefined
   lastPercent = undefined
+  isCompactAttempted = false
 }
 
 // 측정 이벤트와 $.session.usage() 가 같은 이름으로 주는 값
@@ -97,6 +142,7 @@ const passThrough = <E, R>($: unknown, e: E, next: (e: E) => R): R => next(e)
 
 export const register: Register = (on, options) => {
   display = readDisplay(options)
+  autoCompact = readAutoCompact(options)
 
   // 세션 시작(재로드 포함) 시 명령을 등록하고, 켜져 있으면 현재 값으로 한 번 그린다
   on('session.start', async ($, e, next) => {
@@ -125,6 +171,7 @@ export const register: Register = (on, options) => {
       if (isContextChange) {
         trackGrowth(e.context.tokens)
         warnCrossings($, e.context.tokens, basis)
+        scheduleAutoCompact($, e.context.tokens, basis)
       }
 
       draw($, e, basis)

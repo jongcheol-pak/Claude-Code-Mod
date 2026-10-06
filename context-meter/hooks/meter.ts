@@ -171,3 +171,17 @@ export const detailRows = (categories: readonly DetailCategory[], rawMaxTokens: 
 
 export const detailHeader = (totalTokens: number, rawMaxTokens: number, isCompactBasis: boolean): string =>
   `사용 ${formatTokens(totalTokens)} / ${isCompactBasis ? '자동 압축 기준' : '모델 윈도우'} ${formatTokens(rawMaxTokens)} (${percentOf(totalTokens, rawMaxTokens)}%)`
+
+// N% 자동 압축 설정 — 기본은 꺼짐, N 은 90
+export type AutoCompact = { isEnabled: boolean; percent: number }
+
+const DEFAULT_AUTO_COMPACT_PERCENT = 90
+
+export const readAutoCompact = (options: Readonly<Record<string, unknown>>): AutoCompact => ({
+  isEnabled: flag(options.auto_compact, false),
+  percent: typeof options.auto_compact_percent === 'number' ? options.auto_compact_percent : DEFAULT_AUTO_COMPACT_PERCENT,
+})
+
+// 이번 측정에서 자동 압축을 시도할지 — 같은 구간(N 이상)에서는 한 번만
+export const shouldAutoCompact = (percent: number, setting: AutoCompact, isAttempted: boolean): boolean =>
+  setting.isEnabled && percent >= setting.percent && !isAttempted
