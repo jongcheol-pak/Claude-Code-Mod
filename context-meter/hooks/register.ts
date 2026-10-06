@@ -222,8 +222,10 @@ export const register: Register = (on, options) => {
       return renderDetailPane(elements, '내역을 읽을 수 없습니다', [])
     }
 
-    const { categories, totalTokens, rawMaxTokens, autoCompactThreshold } = context.breakdown
-    const header = detailHeader(totalTokens, rawMaxTokens, autoCompactThreshold !== undefined)
+    const { categories, totalTokens, rawMaxTokens, autoCompactThreshold, autocompactSource } = context.breakdown
+    // autocompactSource 'auto' 는 모델 자체 한도, 나머지는 누군가 정한 더 작은 압축 창이다
+    const windowLabel = autocompactSource === 'auto' ? '모델 윈도우' : '압축 창'
+    const header = detailHeader(totalTokens, rawMaxTokens, windowLabel, autoCompactThreshold)
 
     return renderDetailPane(elements, header, detailRows(categories, rawMaxTokens))
   })

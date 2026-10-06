@@ -12,8 +12,9 @@ type StubOptions = {
 const breakdown = (threshold: number | undefined): SessionContextBreakdown => ({
   categories: [],
   totalTokens: 0,
-  maxTokens: threshold ?? 200_000,
-  rawMaxTokens: threshold ?? 200_000,
+  // 측정 창은 모델 윈도우 200k, 자동 압축 임계치는 그보다 작다(실세션처럼 둘을 다르게 둔다)
+  maxTokens: 200_000,
+  rawMaxTokens: 200_000,
   autocompactSource: 'auto',
   percentage: 0,
   gridRows: [],
@@ -363,8 +364,8 @@ test('[갈래7-3] 내역 패널은 terminal·desktop 모두 머리줄과 카테�
     })
 
     // Text 의 key 는 그려진 트리에 남지 않아 문구로 찾는다
-    expect((await ui.find({ type: 'Text', text: /^사용 / }))?.text).toBe('사용 58k / 자동 압축 기준 160k (36%)')
-    expect((await ui.find({ type: 'Text', text: /Messages/ }))?.text).toContain('31%')
+    expect((await ui.find({ type: 'Text', text: /^사용 / }))?.text).toBe('사용 58k / 모델 윈도우 200k (29%) · 자동 압축 160k')
+    expect((await ui.find({ type: 'Text', text: /Messages/ }))?.text).toContain('25%')
     await ui.unmount()
   }
 })
@@ -475,4 +476,18 @@ test('[갈래6-6] show_rate_limits 를 켜면 플랜 한도만 바뀐 측정에�
   })
 
   expect(shown).toEqual(['컨텍스트 █████░░░░░ 53% · 84k/160k · 5h 41%'])
+})
+
+test('[갈래6-7] 플랜 한도 표시가 꺼져 있으면 한도만 바뀐 측정에 반응하지 않는다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  mock.store(on)
+
+  await $.session.measure({
+    context: { tokens: 84_000, window: 200_000 },
+    rateLimits: [{ kind: 'five_hour', percentUsed: 41 }],
+    changed: ['rateLimits'],
+  })
+
+  expect(shown).toEqual([])
 })

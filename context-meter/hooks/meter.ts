@@ -169,8 +169,19 @@ export const detailRows = (categories: readonly DetailCategory[], rawMaxTokens: 
   return [...inWindow, ...deferred].map(category => toDetailRow(category, rawMaxTokens))
 }
 
-export const detailHeader = (totalTokens: number, rawMaxTokens: number, isCompactBasis: boolean): string =>
-  `사용 ${formatTokens(totalTokens)} / ${isCompactBasis ? '자동 압축 기준' : '모델 윈도우'} ${formatTokens(rawMaxTokens)} (${percentOf(totalTokens, rawMaxTokens)}%)`
+// 내역의 분모(rawMaxTokens)는 모델 윈도우이거나 그보다 작은 압축 창이다 — 자동 압축 임계치와 다른 값이라 따로 적는다
+export type WindowLabel = '모델 윈도우' | '압축 창'
+
+export const detailHeader = (
+  totalTokens: number,
+  rawMaxTokens: number,
+  windowLabel: WindowLabel,
+  autoCompactThreshold: number | undefined,
+): string => {
+  const threshold = autoCompactThreshold === undefined ? '꺼짐' : formatTokens(autoCompactThreshold)
+
+  return `사용 ${formatTokens(totalTokens)} / ${windowLabel} ${formatTokens(rawMaxTokens)} (${percentOf(totalTokens, rawMaxTokens)}%) · 자동 압축 ${threshold}`
+}
 
 // N% 자동 압축 설정 — 기본은 꺼짐, N 은 90
 export type AutoCompact = { isEnabled: boolean; percent: number }
