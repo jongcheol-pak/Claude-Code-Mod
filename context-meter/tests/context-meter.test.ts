@@ -1,14 +1,42 @@
-import type { On } from 'claude-code'
+import type { On, SessionContextBreakdown } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-// 엔진 대역: 상태 줄 기록 · 측정 응답 · 현재 사용량 응답
-const stubEngine = (on: On, shown: (string | undefined)[]): void => {
+type StubOptions = {
+  // 자동 압축 임계치 — 없으면 자동 압축이 꺼진 세션
+  threshold?: number
+  // $.session.usage() 가 답하는 현재 토큰
+  tokens?: number
+}
+
+// /context 내역(breakdown) 대역 — 필수 필드만 채우고 임계치만 바꾼다
+const breakdown = (threshold: number | undefined): SessionContextBreakdown => ({
+  categories: [],
+  totalTokens: 0,
+  maxTokens: threshold ?? 200_000,
+  rawMaxTokens: threshold ?? 200_000,
+  autocompactSource: 'auto',
+  percentage: 0,
+  gridRows: [],
+  model: 'test-model',
+  memoryFiles: [],
+  mcpTools: [],
+  agents: [],
+  autoCompactThreshold: threshold,
+  isAutoCompactEnabled: threshold !== undefined,
+  apiUsage: null,
+})
+
+// 엔진 대역: 상태 줄 기록 · 측정 응답 · 현재 사용량(내역 포함) 응답
+const stubEngine = (on: On, shown: (string | undefined)[], options: StubOptions = {}): void => {
+  // { threshold: undefined } 를 명시하면 기본값 대신 「꺼짐」으로 읽는다
+  const threshold = 'threshold' in options ? options.threshold : 160_000
+  const tokens = options.tokens ?? 50_000
   on('ui.status', ($, e) => { shown.push(e.text); return null as never })
   on('session.measure', ($, e) => ({ changed: e.changed }))
   on('session.usage', () => ({
     value: {
       startedAt: 0,
-      context: { tokens: 50_000, window: 200_000, percent: 25 },
+      context: { tokens, window: 200_000, breakdown: breakdown(threshold) },
       rateLimits: [],
     },
   }))
@@ -27,25 +55,29 @@ const MEASURE = {
   changed: ['context' as const],
 }
 
-test('측정값이 오면 상태 줄에 퍼센트와 토큰 수를 표시한다', async ($, on) => {
+test('[갈래2-1] 측정값을 자동 압축 임계치 기준 % 와 토큰 수로 표시한다', async ($, on) => {
   const shown: (string | undefined)[] = []
-  on('ui.status', ($, e) => { shown.push(e.text); return null as never })
-  on('session.measure', ($, e) => ({ changed: e.changed }))
+  stubEngine(on, shown)
   mock.store(on)
 
-  await $.session.measure({
-    context: { tokens: 84_000, window: 200_000, percent: 42 },
-    rateLimits: [],
-    changed: ['context'],
-  })
+  await $.session.measure(MEASURE)
 
-  expect(shown).toEqual(['컨텍스트 ████░░░░░░ 42% · 84.0k/200.0k'])
+  expect(shown).toEqual(['컨텍스트 █████░░░░░ 53% · 84k/160k'])
 })
 
-test('첫 응답 전에는 윈도우 크기만 표시한다', async ($, on) => {
+test('[갈래2-2] 자동 압축이 꺼진 세션은 모델 윈도우 기준으로 표시한다', async ($, on) => {
   const shown: (string | undefined)[] = []
-  on('ui.status', ($, e) => { shown.push(e.text); return null as never })
-  on('session.measure', ($, e) => ({ changed: e.changed }))
+  stubEngine(on, shown, { threshold: undefined })
+  mock.store(on)
+
+  await $.session.measure(MEASURE)
+
+  expect(shown).toEqual(['컨텍스트 ████░░░░░░ 42% · 84k/200k'])
+})
+
+test('[갈래2-3] 첫 응답 전에는 기준 크기만 표시한다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown, { threshold: undefined })
   mock.store(on)
 
   await $.session.measure({
@@ -54,13 +86,12 @@ test('첫 응답 전에는 윈도우 크기만 표시한다', async ($, on) => {
     changed: ['context'],
   })
 
-  expect(shown).toEqual(['컨텍스트 –/1.0M'])
+  expect(shown).toEqual(['컨텍스트 –/1M'])
 })
 
-test('컨텍스트가 바뀌지 않은 측정은 상태 줄을 건드리지 않는다', async ($, on) => {
+test('[갈래6-5] 비용 표시가 꺼져 있으면 비용만 바뀐 측정에 반응하지 않는다', async ($, on) => {
   const shown: (string | undefined)[] = []
-  on('ui.status', ($, e) => { shown.push(e.text); return null as never })
-  on('session.measure', ($, e) => ({ changed: e.changed }))
+  stubEngine(on, shown)
   mock.store(on)
 
   await $.session.measure({
@@ -73,51 +104,51 @@ test('컨텍스트가 바뀌지 않은 측정은 상태 줄을 건드리지 않�
   expect(shown).toEqual([])
 })
 
-test('/context-meter off 는 상태 줄을 지우고 이후 측정을 무시한다', async ($, on) => {
+test('[갈래9-1] /context-meter off 는 상태 줄을 지우고 이후 측정을 무시한다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
   mock.store(on)
 
-  const result = await $.command.run({ ...RUN,args: 'off' })
+  const result = await $.command.run({ ...RUN, args: 'off' })
   await $.session.measure(MEASURE)
 
   expect(result.text).toBe('컨텍스트 사용량 표시: 꺼짐')
   expect(shown).toEqual([undefined])
 })
 
-test('/context-meter on 은 현재 사용량을 바로 표시하고 이후 측정도 반영한다', async ($, on) => {
+test('[갈래9-2] /context-meter on 은 현재 사용량을 바로 표시하고 이후 측정도 반영한다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
   mock.store(on, { isEnabled: false })
 
-  const result = await $.command.run({ ...RUN,args: 'on' })
+  const result = await $.command.run({ ...RUN, args: 'on' })
   await $.session.measure(MEASURE)
 
   expect(result.text).toBe('컨텍스트 사용량 표시: 켜짐')
   expect(shown).toEqual([
-    '컨텍스트 ███░░░░░░░ 25% · 50.0k/200.0k',
-    '컨텍스트 ████░░░░░░ 42% · 84.0k/200.0k',
+    '컨텍스트 ███░░░░░░░ 31% · 50k/160k',
+    '컨텍스트 █████░░░░░ 53% · 84k/160k',
   ])
 })
 
-test('인자 없이 실행하면 켜짐과 꺼짐을 번갈아 전환한다', async ($, on) => {
+test('[갈래9-3] 인자 없이 실행하면 켜짐과 꺼짐을 번갈아 전환한다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
   mock.store(on)
 
-  const first = await $.command.run({ ...RUN,args: '' })
-  const second = await $.command.run({ ...RUN,args: '' })
+  const first = await $.command.run({ ...RUN, args: '' })
+  const second = await $.command.run({ ...RUN, args: '' })
 
   expect(first.text).toBe('컨텍스트 사용량 표시: 꺼짐')
   expect(second.text).toBe('컨텍스트 사용량 표시: 켜짐')
 })
 
-test('알 수 없는 인자는 사용법을 보여 주고 상태를 바꾸지 않는다', async ($, on) => {
+test('[갈래9-4] 알 수 없는 인자는 사용법을 보여 주고 상태를 바꾸지 않는다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
   mock.store(on)
 
-  const result = await $.command.run({ ...RUN,args: 'maybe' })
+  const result = await $.command.run({ ...RUN, args: 'maybe' })
 
   expect(result.text).toContain('사용법')
   expect(shown).toEqual([])

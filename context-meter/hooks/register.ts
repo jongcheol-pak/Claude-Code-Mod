@@ -1,27 +1,6 @@
 import type { EngineInterface, Register, SessionContextUsage } from 'claude-code'
 
-const BAR_WIDTH = 10
-
-// 토큰 수를 1.2k / 1.0M 형태로 줄인다
-const formatTokens = (n: number): string =>
-  n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M`
-    : n >= 1_000 ? `${(n / 1_000).toFixed(1)}k`
-    : `${n}`
-
-// 상태 줄 한 줄: 막대 · 퍼센트 · 사용/전체
-export const formatContext = (context: SessionContextUsage): string => {
-  const window = formatTokens(context.window)
-
-  if (context.tokens === undefined) {
-    return `컨텍스트 –/${window}`
-  }
-
-  const percent = context.percent ?? Math.round((context.tokens / context.window) * 100)
-  const filled = Math.min(BAR_WIDTH, Math.round((percent / 100) * BAR_WIDTH))
-  const bar = '█'.repeat(filled) + '░'.repeat(BAR_WIDTH - filled)
-
-  return `컨텍스트 ${bar} ${percent}% · ${formatTokens(context.tokens)}/${window}`
-}
+import { formatMeter, resolveLimit } from './meter.ts'
 
 const COMMAND = 'context-meter'
 const ENABLED_KEY = 'isEnabled'
@@ -31,9 +10,22 @@ const USAGE = `사용법: /${COMMAND} [on|off] — 인자 없이 실행하면 �
 const isEnabled = async ($: EngineInterface): Promise<boolean> =>
   (await $.store.get(ENABLED_KEY)) !== false
 
+// 자동 압축 임계치는 측정 이벤트에 없어 breakdown(로컬 추정, API 요청 없음)에서 읽는다
+const readLimit = async ($: EngineInterface, window: number): Promise<number> => {
+  const { context } = await $.session.usage({ breakdown: 'summary' })
+
+  return resolveLimit(window, context.breakdown?.autoCompactThreshold)
+}
+
+const showContext = async ($: EngineInterface, context: SessionContextUsage): Promise<void> => {
+  const limit = await readLimit($, context.window)
+  $.ui.status(formatMeter(context.tokens, limit))
+}
+
 const showCurrent = async ($: EngineInterface): Promise<void> => {
-  const { context } = await $.session.usage()
-  $.ui.status(formatContext(context))
+  const { context } = await $.session.usage({ breakdown: 'summary' })
+  const limit = resolveLimit(context.window, context.breakdown?.autoCompactThreshold)
+  $.ui.status(formatMeter(context.tokens, limit))
 }
 
 export const register: Register = on => {
@@ -55,7 +47,7 @@ export const register: Register = on => {
   // 턴마다 엔진이 측정값을 밀어 준다 — 켜져 있고 컨텍스트가 바뀐 경우만 갱신
   on('session.measure', async ($, e, next) => {
     if (e.changed.includes('context') && (await isEnabled($))) {
-      $.ui.status(formatContext(e.context))
+      await showContext($, e.context)
     }
 
     return next(e)
