@@ -254,3 +254,60 @@ test('[갈래3-6] /clear 뒤 첫 측정은 기준선만 다시 잡아 토스트�
 
   expect(toasts).toEqual([])
 })
+
+const measureTokens = (tokens: number) => ({
+  context: { tokens, window: 200_000 },
+  rateLimits: [],
+  changed: ['context' as const],
+})
+
+test('[갈래5-6] 기본 설정에서는 측정 사이 증가량과 남은 턴을 함께 표시한다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  mock.store(on)
+
+  await $.session.measure(measureTokens(80_000))
+  await $.session.measure(measureTokens(84_000))
+
+  expect(shown.at(-1)).toBe('컨텍스트 █████░░░░░ 53% · 84k/160k · +4k · ≈19턴')
+})
+
+test('[갈래5-7] show_delta 를 끄면 증가량을 표시하지 않는다', { options: { show_delta: false } }, async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  mock.store(on)
+
+  await $.session.measure(measureTokens(80_000))
+  await $.session.measure(measureTokens(84_000))
+
+  expect(shown.at(-1)).toBe('컨텍스트 █████░░░░░ 53% · 84k/160k')
+})
+
+test('[갈래6-4] show_cost 를 켜면 비용만 바뀐 측정에도 다시 그린다', { options: { show_cost: true } }, async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  mock.store(on)
+
+  await $.session.measure({
+    context: { tokens: 84_000, window: 200_000 },
+    rateLimits: [],
+    cost: { usd: 1.5 },
+    changed: ['cost'],
+  })
+
+  expect(shown).toEqual(['컨텍스트 █████░░░░░ 53% · 84k/160k · $1.50'])
+})
+
+test('[갈래3-7] /clear 뒤에는 증가량 이력을 비운다', async ($, on) => {
+  const shown: (string | undefined)[] = []
+  stubEngine(on, shown)
+  stubCompaction(on)
+  mock.store(on)
+
+  await $.session.measure(measureTokens(80_000))
+  await $.session.measure(measureTokens(84_000))
+  await $.classic.SessionStart({ source: 'clear' })
+  await $.session.measure(measureTokens(90_000))
+
+  expect(shown.at(-1)).toBe('컨텍스트 ██████░░░░ 56% · 90k/160k')
+})

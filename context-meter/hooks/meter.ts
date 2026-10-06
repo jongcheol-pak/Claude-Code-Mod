@@ -60,3 +60,84 @@ export const crossedPercents = (previous: number | undefined, current: number): 
 // 경고 토스트 문구 — 기준이 자동 압축 임계치인지 모델 윈도우인지 밝힌다
 export const formatWarning = (percent: number, tokens: number, limit: number, isCompactBasis: boolean): string =>
   `컨텍스트 ${percent}% 도달 — ${isCompactBasis ? '자동 압축 기준' : '모델 윈도우'} ${formatTokens(limit)} 중 ${formatTokens(tokens)} 사용`
+
+// 상태 줄에 덧붙이는 항목의 켜짐/꺼짐 — userConfig 값에서 읽는다
+export type Display = { showDelta: boolean; showCost: boolean; showRateLimits: boolean }
+
+// 값이 없거나 boolean 이 아니면 매니페스트 기본값과 같은 값을 쓴다
+const flag = (value: unknown, fallback: boolean): boolean =>
+  typeof value === 'boolean' ? value : fallback
+
+export const readDisplay = (options: Readonly<Record<string, unknown>>): Display => ({
+  showDelta: flag(options.show_delta, true),
+  showCost: flag(options.show_cost, false),
+  showRateLimits: flag(options.show_rate_limits, false),
+})
+
+const GROWTH_WINDOW = 3
+
+// 최근 증가량 이력(양수만, 최근 3개) — 압축으로 줄어든 측정은 넣지 않는다
+export const recordGrowth = (history: readonly number[], previous: number | undefined, current: number): number[] => {
+  if (previous === undefined || current <= previous) {
+    return [...history]
+  }
+
+  return [...history, current - previous].slice(-GROWTH_WINDOW)
+}
+
+// 기준까지 남은 턴 추정 — 이력 평균 증가량으로 나눈다, 이력이 없으면 모름
+export const estimateTurns = (history: readonly number[], remaining: number): number | undefined => {
+  if (history.length === 0) {
+    return undefined
+  }
+
+  const average = history.reduce((sum, delta) => sum + delta, 0) / history.length
+
+  return Math.max(0, Math.floor(remaining / average))
+}
+
+const RATE_LIMIT_LABELS: Readonly<Record<string, string>> = { five_hour: '5h', seven_day: '7d' }
+
+const formatGrowth = (tokens: number | undefined, limit: number, growth: readonly number[]): string | undefined => {
+  const last = growth.at(-1)
+
+  if (last === undefined || tokens === undefined) {
+    return undefined
+  }
+
+  const turns = estimateTurns(growth, limit - tokens)
+
+  return turns === undefined ? `+${formatTokens(last)}` : `+${formatTokens(last)} · ≈${turns}턴`
+}
+
+const formatRateLimits = (rateLimits: StatusInput['rateLimits']): string | undefined => {
+  if (rateLimits.length === 0) {
+    return undefined
+  }
+
+  return rateLimits
+    .map(limit => `${RATE_LIMIT_LABELS[limit.kind] ?? limit.kind} ${limit.percentUsed}%`)
+    .join(' · ')
+}
+
+export type StatusInput = {
+  tokens: number | undefined
+  limit: number
+  growth: readonly number[]
+  cost?: { usd: number }
+  rateLimits: readonly { kind: string; percentUsed: number }[]
+  display: Display
+}
+
+// 상태 줄 전체: 미터 · 증가량·남은 턴 · 비용 · 플랜 한도 (꺼졌거나 값이 없으면 생략)
+export const composeStatus = (input: StatusInput): string => {
+  const { tokens, limit, growth, cost, rateLimits, display } = input
+  const parts = [
+    formatMeter(tokens, limit),
+    display.showDelta ? formatGrowth(tokens, limit, growth) : undefined,
+    display.showCost && cost !== undefined ? `$${cost.usd.toFixed(2)}` : undefined,
+    display.showRateLimits ? formatRateLimits(rateLimits) : undefined,
+  ]
+
+  return parts.filter(part => part !== undefined).join(' · ')
+}

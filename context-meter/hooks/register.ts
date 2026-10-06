@@ -1,6 +1,15 @@
-import type { EngineInterface, Register, SessionContextUsage } from 'claude-code'
+import type { EngineInterface, Register, SessionUsage } from 'claude-code'
 
-import { crossedPercents, formatMeter, formatWarning, percentOf, resolveLimit } from './meter.ts'
+import {
+  composeStatus,
+  crossedPercents,
+  formatWarning,
+  percentOf,
+  readDisplay,
+  recordGrowth,
+  resolveLimit,
+} from './meter.ts'
+import type { Display } from './meter.ts'
 
 const COMMAND = 'context-meter'
 const ENABLED_KEY = 'isEnabled'
@@ -37,22 +46,54 @@ const warnCrossings = ($: EngineInterface, tokens: number | undefined, basis: Ba
   lastPercent = percent
 }
 
-const showContext = async ($: EngineInterface, context: SessionContextUsage): Promise<void> => {
-  const basis = await readBasis($, context.window)
-  $.ui.status(formatMeter(context.tokens, basis.limit))
-  warnCrossings($, context.tokens, basis)
+// userConfig 로 고른 덧붙임 항목 — 설정을 바꾸면 모듈이 다시 로드돼 register 가 새 값을 넣는다
+let display: Display = readDisplay({})
+
+// 증가량 이력과 직전 토큰 — /clear 시 비운다
+let growth: number[] = []
+let lastTokens: number | undefined
+
+const trackGrowth = (tokens: number | undefined): void => {
+  if (tokens === undefined) {
+    return
+  }
+
+  growth = recordGrowth(growth, lastTokens, tokens)
+  lastTokens = tokens
+}
+
+const resetHistory = (): void => {
+  growth = []
+  lastTokens = undefined
+  lastPercent = undefined
+}
+
+// 측정 이벤트와 $.session.usage() 가 같은 이름으로 주는 값
+type Snapshot = Pick<SessionUsage, 'context' | 'cost' | 'rateLimits'>
+
+const draw = ($: EngineInterface, snapshot: Snapshot, basis: Basis): void => {
+  $.ui.status(composeStatus({
+    tokens: snapshot.context.tokens,
+    limit: basis.limit,
+    growth,
+    cost: snapshot.cost,
+    rateLimits: snapshot.rateLimits,
+    display,
+  }))
 }
 
 const showCurrent = async ($: EngineInterface): Promise<void> => {
-  const { context } = await $.session.usage({ breakdown: 'summary' })
-  const limit = resolveLimit(context.window, context.breakdown?.autoCompactThreshold)
-  $.ui.status(formatMeter(context.tokens, limit))
+  const usage = await $.session.usage({ breakdown: 'summary' })
+  const threshold = usage.context.breakdown?.autoCompactThreshold
+  draw($, usage, { limit: resolveLimit(usage.context.window, threshold), isCompactBasis: threshold !== undefined })
 }
 
 // 다시 그리기가 실패해도 압축·clear 자체는 막지 않는다 — next 는 재호출해도 같은 결과를 돌려준다
 const passThrough = <E, R>($: unknown, e: E, next: (e: E) => R): R => next(e)
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
+  display = readDisplay(options)
+
   // 세션 시작(재로드 포함) 시 명령을 등록하고, 켜져 있으면 현재 값으로 한 번 그린다
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -68,10 +109,21 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // 턴마다 엔진이 측정값을 밀어 준다 — 켜져 있고 컨텍스트가 바뀐 경우만 갱신
+  // 턴마다 엔진이 측정값을 밀어 준다 — 컨텍스트가 바뀌었거나, 켜 둔 비용·한도가 바뀐 경우만 갱신
   on('session.measure', async ($, e, next) => {
-    if (e.changed.includes('context') && (await isEnabled($))) {
-      await showContext($, e.context)
+    const isContextChange = e.changed.includes('context')
+    const isExtraChange = (display.showCost && e.changed.includes('cost'))
+      || (display.showRateLimits && e.changed.includes('rateLimits'))
+
+    if ((isContextChange || isExtraChange) && (await isEnabled($))) {
+      const basis = await readBasis($, e.context.window)
+
+      if (isContextChange) {
+        trackGrowth(e.context.tokens)
+        warnCrossings($, e.context.tokens, basis)
+      }
+
+      draw($, e, basis)
     }
 
     return next(e)
@@ -97,7 +149,7 @@ export const register: Register = on => {
       return result
     }
 
-    lastPercent = undefined
+    resetHistory()
 
     if (await isEnabled($)) {
       await showCurrent($)
