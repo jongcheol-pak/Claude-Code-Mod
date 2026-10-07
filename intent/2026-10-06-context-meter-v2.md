@@ -8,7 +8,7 @@ Author: jongcheol-pak. Status: approved.
 상태 줄 %·막대·임계치 경고가 자동 압축 임계치 기준(꺼져 있으면 모델 윈도우)으로 표시되고 `200k`처럼 짧게 표기되며 압축·clear 직후 갱신된다. 80%·90% 도달 시 토스트가 뜬다. 증가량·남은 턴(기본 켬)·비용·플랜 한도(기본 끔)를 userConfig로 켜고 끌 수 있다. `/context-meter detail`이 카테고리별 내역 패널을 열고, 설정 시 N%(기본 90)에서 자동 압축한다(기본 끔).
 
 ## Affected users and systems
-본인과 GitHub 마켓플레이스(jongcheol-pak/Claude-Code-Mode)로 설치하는 사용자. `context-meter/` 모드의 훅 모듈·매니페스트·테스트, 레포 README.
+본인과 GitHub 마켓플레이스(jongcheol-pak/Claude-Code-Mod)로 설치하는 사용자. `context-meter/` 모드의 훅 모듈·매니페스트·테스트, 레포 README.
 
 ## Constraints
 계층 분리 — 엔진 무의존 계산·표기(`hooks/meter.ts`) ← 훅·그리기(`hooks/register.ts`) 단방향. 패널 트리는 `$` 를 받지 않는 별도 순수 파일(`hooks/detail-pane.tsx`)에 둘 수 있다(`register.ts` 파일명 유지). 기존 `/context-meter on|off` 동작 유지. 자동 압축은 기본 꺼짐.
