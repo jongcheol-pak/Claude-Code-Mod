@@ -13,7 +13,7 @@ Claude Code 모드(함수 훅 플러그인) 모음이다. 저장소 루트의 `.
 터미널의 Claude Code 프롬프트에서 실행한다.
 
 ```
-/plugin install context-meter --marketplace jongcheol-pak/Claude-Code-Mode
+/plugin install context-meter --marketplace jongcheol-pak/Claude-Code-Mod
 ```
 
 마켓플레이스 추가 질문에 `y`, 설치 범위를 고르면 바로 활성화된다. 설정 항목(userConfig)이 있는 모드는 그 사이에 옵션 설정 화면이 이어질 수 있다.
