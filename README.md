@@ -1,4 +1,4 @@
-# Claude Code Mode
+# Claude Code Mod
 
 Claude Code 모드(함수 훅 플러그인) 모음이다. 저장소 루트의 `.claude-plugin/marketplace.json`이 모드 목록이고, 모드마다 하위 폴더 하나를 쓴다.
 
