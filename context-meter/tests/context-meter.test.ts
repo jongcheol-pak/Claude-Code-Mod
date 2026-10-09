@@ -32,7 +32,7 @@ const stubEngine = (on: On, shown: (string | undefined)[], options: StubOptions 
   // { threshold: undefined } 를 명시하면 기본값 대신 「꺼짐」으로 읽는다
   const threshold = 'threshold' in options ? options.threshold : 160_000
   const tokens = options.tokens ?? 50_000
-  on('ui.status', ($, e) => { shown.push(e.text); return null as never })
+  on('ui.status', ($, e) => { shown.push(e.text); return { value: undefined } as never })
   on('session.measure', ($, e) => ({ changed: e.changed }))
   on('session.usage', () => ({
     value: {
@@ -231,7 +231,7 @@ test('[갈래4-6] 측정이 80% 를 넘는 순간 토스트를 한 번 띄우고
   const shown: (string | undefined)[] = []
   const toasts: string[] = []
   stubEngine(on, shown)
-  on('ui.toast', ($, e) => { toasts.push(e.text); return null as never })
+  on('ui.toast', ($, e) => { toasts.push(e.text); return { value: undefined } as never })
   mock.store(on)
 
   await $.session.measure(measureAt(70))
@@ -246,7 +246,7 @@ test('[갈래3-6] /clear 뒤 첫 측정은 기준선만 다시 잡아 토스트�
   const toasts: string[] = []
   stubEngine(on, shown)
   stubCompaction(on)
-  on('ui.toast', ($, e) => { toasts.push(e.text); return null as never })
+  on('ui.toast', ($, e) => { toasts.push(e.text); return { value: undefined } as never })
   mock.store(on)
 
   await $.session.measure(measureAt(70))
@@ -373,7 +373,7 @@ test('[갈래7-3] 내역 패널은 terminal·desktop 모두 머리줄과 카테�
 test('[갈래7-4] 컨텍스트 측정 뒤 패널을 다시 그리도록 요청한다', async ($, on) => {
   const invalidated: string[] = []
   stubEngine(on, [])
-  on('ui.invalidate', ($, e) => { invalidated.push(e.event); return null as never })
+  on('ui.invalidate', ($, e) => { invalidated.push(e.event); return { value: undefined } as never })
   mock.store(on)
 
   await $.session.measure(MEASURE)
@@ -432,7 +432,7 @@ test('[갈래8-6] 압축이 거부되거나 건너뛰면 토스트를 한 번 �
   const toasts: string[] = []
   stubEngine(on, [])
   stubAutoCompaction(on, 'rejected', calls)
-  on('ui.toast', ($, e) => { toasts.push(e.text); return null as never })
+  on('ui.toast', ($, e) => { toasts.push(e.text); return { value: undefined } as never })
   const clock = mock.clock(on)
   mock.store(on)
 
@@ -453,7 +453,7 @@ test('[갈래8-7] 재로드 직후 첫 측정이 이미 N% 이상이면 압축�
   const toasts: string[] = []
   stubEngine(on, [])
   stubAutoCompaction(on, 'skipped', calls)
-  on('ui.toast', ($, e) => { toasts.push(e.text); return null as never })
+  on('ui.toast', ($, e) => { toasts.push(e.text); return { value: undefined } as never })
   const clock = mock.clock(on)
   mock.store(on)
 
