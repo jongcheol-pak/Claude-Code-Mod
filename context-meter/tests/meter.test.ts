@@ -184,4 +184,12 @@ describe('자동 압축 판정', () => {
   test('[갈래8-3] 이미 시도한 구간에서는 다시 시도하지 않는다', () => {
     expect(shouldAutoCompact(95, readAutoCompact({ auto_compact: true }), true)).toBe(false)
   })
+
+  test('[갈래8-8] N 이 50~99 밖이면 가까운 경계로, 유한한 숫자가 아니면 기본값 90 으로 읽는다', () => {
+    expect(readAutoCompact({ auto_compact_percent: 120 }).percent).toBe(99)
+    expect(readAutoCompact({ auto_compact_percent: 10 }).percent).toBe(50)
+    expect(readAutoCompact({ auto_compact_percent: Number.NaN }).percent).toBe(90)
+    expect(readAutoCompact({ auto_compact_percent: Number.POSITIVE_INFINITY }).percent).toBe(90)
+    expect(readAutoCompact({ auto_compact_percent: 75 }).percent).toBe(75)
+  })
 })

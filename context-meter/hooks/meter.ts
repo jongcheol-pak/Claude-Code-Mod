@@ -188,9 +188,19 @@ export type AutoCompact = { isEnabled: boolean; percent: number }
 
 const DEFAULT_AUTO_COMPACT_PERCENT = 90
 
+// 매니페스트(plugin.json)의 min·max 와 같은 범위
+const MIN_AUTO_COMPACT_PERCENT = 50
+const MAX_AUTO_COMPACT_PERCENT = 99
+
+// 유한한 숫자가 아니면 기본값, 범위 밖이면 가까운 경계로 맞춘다
+const readPercent = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? Math.min(MAX_AUTO_COMPACT_PERCENT, Math.max(MIN_AUTO_COMPACT_PERCENT, value))
+    : DEFAULT_AUTO_COMPACT_PERCENT
+
 export const readAutoCompact = (options: Readonly<Record<string, unknown>>): AutoCompact => ({
   isEnabled: flag(options.auto_compact, false),
-  percent: typeof options.auto_compact_percent === 'number' ? options.auto_compact_percent : DEFAULT_AUTO_COMPACT_PERCENT,
+  percent: readPercent(options.auto_compact_percent),
 })
 
 // 이번 측정에서 자동 압축을 시도할지 — 같은 구간(N 이상)에서는 한 번만
