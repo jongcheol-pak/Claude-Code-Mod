@@ -1,5 +1,10 @@
 # AGENTS.md — Agent Guide
 
+## 위키
+- **프로젝트 페이지**: `20_projects/personal/claude-code-mod.md` (LLM WIKI vault)
+- 프로젝트 성격·기술 스택·디렉터리 구조·**아키텍처 상세**·기능 목록은 **위키가 정본**이다.
+  이 파일에 중복 기재하지 않는다 (단 `## Conventions`의 **아키텍처 선언 1줄**은 여기 남는다).
+
 ## Build & Test
 - **Build**: 없음 (Claude Code가 .ts를 직접 로드)
 - **Test**: `claude plugin test ./<모드>` · **Validate**: `claude plugin validate .` (마켓플레이스) · `claude plugin validate ./<모드>`
