@@ -1,0 +1,7 @@
+{
+  "name": "terminal-pet",
+  "version": "0.1.0",
+  "description": "입력창 위에 ASCII 펫을 키운다 — 도구 호출 결과·응답량·시간에 따라 자라고 배고파진다",
+  "author": { "name": "jongcheol-pak" },
+  "types": "./types/index.d.ts"
+}
