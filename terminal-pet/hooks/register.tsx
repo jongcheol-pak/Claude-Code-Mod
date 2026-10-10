@@ -57,7 +57,7 @@ export const register: Register = on => {
     const shouldShow = await isEnabled($)
     await update($, enabledAtom, () => shouldShow)
     await saveDecay($)
-    // 재로드로 이 훅이 다시 돌면 주기가 하나 더 생길 수 있지만, 감소는 시각의 함수라 겹쳐 저장해도 값이 같다
+    // 재로드는 이전 환경의 대기를 취소하므로 주기는 늘 하나다
     $.clock.every(REFRESH_MS, () => {
       void saveDecay($)
     })

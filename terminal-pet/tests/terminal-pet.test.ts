@@ -337,13 +337,11 @@ test('[갈래2-13] 세션 상태가 비어 있어도 store 에 펫이 있으면 
 })
 
 test('[갈래2-14] 띠는 지금 시각까지의 감소를 반영해 그린다', async ($, on) => {
-  stubEngine(on)
   stubBand(on)
-  const clock = mock.clock(on)
-  stubStore(on, { pet: pet({ stage: 'baby', species: 'cat' }) })
-  await $.session.start(START)
+  // 세션 시작을 거치지 않아 15분 타이머가 감소를 미리 저장하지 않는다 — 띠 자신의 감소 계산만 잰다
+  mock.clock(on, { now: 2 * HOUR })
   // 70 → 2시간 뒤 62: 막대 5칸 중 4칸 → 3칸
-  await clock.set(2 * HOUR)
+  stubStore(on, { pet: pet({ stage: 'baby', species: 'cat' }) })
 
   for (const surface of SURFACES) {
     const ui = await mountBand($, surface)
