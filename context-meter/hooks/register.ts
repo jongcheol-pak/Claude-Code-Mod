@@ -146,8 +146,9 @@ export const register: Register = (on, options) => {
 
   // 세션 시작(재로드 포함) 시 명령을 등록하고, 켜져 있으면 현재 값으로 한 번 그린다
   on('session.start', async ($, e, next) => {
+    // 이름은 리터럴로 둔다 — validate 가 리터럴로 등록·매칭한 명령만 「자기 명령 응답」으로 읽는다
     await $.command.register({
-      name: COMMAND,
+      name: 'context-meter',
       description: '상태 줄의 컨텍스트 사용량 표시를 켜거나 끄고, detail 로 내역 패널을 연다',
       argumentHint: '[on|off|detail]',
     })
@@ -230,7 +231,7 @@ export const register: Register = (on, options) => {
     return renderDetailPane(elements, header, detailRows(categories, rawMaxTokens))
   })
 
-  on('command.run', { command: COMMAND }, async ($, e) => {
+  on('command.run', { command: 'context-meter' }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
 
     if (arg === 'detail') {
