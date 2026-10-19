@@ -1,0 +1,11 @@
+# Claude Code Mod 작업 함정
+
+> 규약: pjc 하니스 플러그인 `skills/REPO-CONVENTIONS.md` — 위치·항목 형식·작성 규칙·읽기·쓰기의 정본이다.
+> 2026-10-20 에 위키 vault `20_projects/personal/claude-code-mod/conventions*.md` 1파일에서 항목 원문 그대로 옮겼다(위키 링크만 평문으로 바꿨다). 절 제목은 언제 읽는가다 — 하위 파일에서 온 절은 `## conventions — <하위 문서 제목>` 아래에 원래 절을 한 단계 내려 두었다.
+
+- [2026-10-10] 슬래시 명령은 `$.command.register({ name })` 와 `on('command.run', { command })` 를 둘 다 문자열 리터럴로 쓴다 — 상수(`name: COMMAND`)로 쓰면 validate 가 `answers its own command` 가 아니라 `gating hook without .catch: command.run{command=…}` 로 오분류한다(통과는 함). 사용법 문구 같은 다른 자리는 상수를 써도 된다 (실측)
+- [2026-10-10] 모드가 `$.state` atom 을 쓰면 `plugin.json` 에 `"types": "./types/index.d.ts"` 가 필수이고 그 계약 파일은 import 없이 자기 완결이어야 한다 — `"types"` 가 없거나 계약이 `../hooks/x.ts` 에서 타입을 import 하면 validate 가 `✘ <plugin>.<key> is not declared` 로 실패한다. 상태 타입은 계약 파일에 정의·export 하고 도메인 파일이 `import type { … } from '../types'` 로 쓴다 (실측)
+- [2026-10-10] 플러그인이 `ui.render`(AbovePrompt·Pane)를 `next(e)` 로 양보하는 케이스를 테스트하려면 엔진 대역이 실제 트리를 그려야 한다 — `null` 을 돌려주면 `$.ui.mount: no implementation for ui.render` 로 실패한다. 대역은 `const { Text } = $.ui.resolve(e); return h(Text, {}, '엔진 기본')` 처럼 자리표지를 그리고, 단언은 플러그인 문구의 부재로 한다 (실측)
+- [2026-10-06] `claude plugin test`의 엔진 대역은 형식이 정해져 있다 — void 이벤트(`ui.status`·`ui.toast`·`ui.invalidate`) 대역은 `{ value: undefined }`를 반환(`null`은 "not a result object", `undefined`는 "returned no result", `{}`는 "neither { value } nor { deny }"로 거부돼 훅이 건너뛰어짐 — 2026-10-09 정정), 값 이벤트(`session.usage`·`ui.open`)는 `{ value: … }`로 답함, `session.compact` 입력·결과 messages는 1개 이상, /clear 테스트는 `classic.SessionStart` 대역 `{}` 필요, 엔진측 `$.command.run` 입력에 origin·presentation 필수 — 어기면 "no implementation"·"empty messages" 같은 대역 오류가 RED처럼 보인다 (실측)
+- [2026-10-06] mod 테스트에서 그려진 트리(`ui.drawn`/`find`)에는 Text의 key가 남지 않아 key 대신 문구로 찾아야 하고, 플러그인이 부른 `$.session.compact`는 테스트 대역에서 `e.trigger`가 `undefined`로 오며, describe 본문(파일 로드 시점)에서 플러그인 함수를 부르면 실패가 "the file did not load" 하나로 뭉뚱그려진다 — 호출은 test 안에서 (실측)
+- [2026-10-06] /clear는 `session.start`를 다시 부르지 않으므로 clear 직후 처리는 `classic.SessionStart`(source `'clear'`) 훅으로 받는다 · `session.compact`·`classic.*` 같은 게이팅 훅은 validate가 `.catch`를 요구하며 `.catch(($, e, next) => next(e))`로 실패가 압축·clear를 막지 않게 한다(next는 재호출해도 같은 결과) (문서 대조)
