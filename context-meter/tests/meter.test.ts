@@ -1,20 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import {
-  composeStatus,
-  detailHeader,
-  detailRows,
-  crossedPercents,
-  estimateTurns,
-  formatMeter,
-  formatTokens,
-  readAutoCompact,
-  readDisplay,
-  recordGrowth,
-  resolveLimit,
-  shouldAutoCompact,
-} from '../hooks/meter.ts'
-import type { Display } from '../hooks/meter.ts'
+import { composeStatus, formatMeter, formatTokens, resolveLimit } from '../hooks/meter.ts'
 
 describe('토큰 표기', () => {
   test('[갈래1-1] 정수 천 단위는 소수점 없이 k 로 쓴다', () => {
@@ -58,138 +44,19 @@ describe('% 기준', () => {
   })
 })
 
-describe('임계치 경고', () => {
-  test('[갈래4-1] 80% 를 아래에서 위로 넘으면 80 을 낸다', () => {
-    expect(crossedPercents(70, 82)).toEqual([80])
+describe('상태 줄', () => {
+  test('[갈래3-1] 모델 · effort · 컨텍스트 순서로 잇는다', () => {
+    expect(composeStatus({ model: 'Opus 5.5', effort: 'high', tokens: 84_000, limit: 200_000 }))
+      .toBe('Opus 5.5 · effort high · 컨텍스트 ████░░░░░░ 42% · 84k/200k')
   })
 
-  test('[갈래4-2] 90% 를 넘으면 90 을, 한 번에 둘 다 넘으면 둘 다 낸다', () => {
-    expect(crossedPercents(85, 91)).toEqual([90])
-    expect(crossedPercents(70, 95)).toEqual([80, 90])
+  test('[갈래3-2] effort 를 모르면 – 로 쓴다', () => {
+    expect(composeStatus({ model: 'Sonnet 5.5', effort: undefined, tokens: undefined, limit: 160_000 }))
+      .toBe('Sonnet 5.5 · effort – · 컨텍스트 –/160k')
   })
 
-  test('[갈래4-3] 이미 넘은 구간 안에서 다시 재면 아무것도 내지 않는다', () => {
-    expect(crossedPercents(82, 85)).toEqual([])
-    expect(crossedPercents(80, 80)).toEqual([])
-  })
-
-  test('[갈래4-4] 아래로 내려갔다가 다시 넘으면 다시 낸다', () => {
-    expect(crossedPercents(85, 40)).toEqual([])
-    expect(crossedPercents(40, 81)).toEqual([80])
-  })
-
-  test('[갈래4-5] 이전 값이 없는 첫 측정은 기준선만 잡고 내지 않는다', () => {
-    expect(crossedPercents(undefined, 95)).toEqual([])
-  })
-})
-
-const DEFAULT_DISPLAY: Display = { showDelta: true, showCost: false, showRateLimits: false }
-
-describe('증가량·남은 턴', () => {
-  test('[갈래5-1] 기본값은 증가량·남은 턴을 켜고 비용·플랜 한도는 끈다', () => {
-    expect(readDisplay({})).toEqual(DEFAULT_DISPLAY)
-  })
-
-  test('[갈래5-2] 증가 이력이 있으면 직전 증가량과 남은 턴을 덧붙인다', () => {
-    const growth = recordGrowth(recordGrowth([], 76_000, 80_000), 80_000, 84_000)
-
-    expect(growth).toEqual([4_000, 4_000])
-    expect(estimateTurns(growth, 160_000 - 84_000)).toBe(19)
-    expect(composeStatus({ tokens: 84_000, limit: 160_000, growth, rateLimits: [], display: DEFAULT_DISPLAY }))
-      .toBe('컨텍스트 █████░░░░░ 53% · 84k/160k · +4k · ≈19턴')
-  })
-
-  test('[갈래5-3] 증가량 표시를 끄면 미터만 보인다', () => {
-    const display = readDisplay({ show_delta: false })
-
-    expect(composeStatus({ tokens: 84_000, limit: 160_000, growth: [4_000], rateLimits: [], display }))
-      .toBe('컨텍스트 █████░░░░░ 53% · 84k/160k')
-  })
-
-  test('[갈래5-4] 이력이 없거나 압축으로 줄어든 측정은 증가량에 넣지 않는다', () => {
-    expect(recordGrowth([], undefined, 50_000)).toEqual([])
-    expect(recordGrowth([4_000], 150_000, 30_000)).toEqual([4_000])
-    expect(estimateTurns([], 10_000)).toBeUndefined()
-    expect(composeStatus({ tokens: 84_000, limit: 160_000, growth: [], rateLimits: [], display: DEFAULT_DISPLAY }))
-      .toBe('컨텍스트 █████░░░░░ 53% · 84k/160k')
-  })
-
-  test('[갈래5-5] 이력은 최근 3개만 평균에 쓴다', () => {
-    expect(recordGrowth([1_000, 2_000, 3_000], 10_000, 16_000)).toEqual([2_000, 3_000, 6_000])
-  })
-})
-
-describe('비용·플랜 한도', () => {
-  // readDisplay 는 케이스 안에서 부른다 — 파일 로드 시점에 부르면 실패가 케이스가 아니라 로드 실패로 보인다
-  const FULL = { show_cost: true, show_rate_limits: true }
-  const rateLimits = [{ kind: 'five_hour', percentUsed: 40 }, { kind: 'seven_day', percentUsed: 12.5 }]
-
-  test('[갈래6-1] 켜면 비용과 플랜 한도를 덧붙인다', () => {
-    expect(composeStatus({ tokens: 84_000, limit: 160_000, growth: [], cost: { usd: 1.234 }, rateLimits, display: readDisplay(FULL) }))
-      .toBe('컨텍스트 █████░░░░░ 53% · 84k/160k · $1.23 · 5h 40% · 7d 12.5%')
-  })
-
-  test('[갈래6-2] 기본값(끔)이면 값이 있어도 보이지 않는다', () => {
-    expect(composeStatus({ tokens: 84_000, limit: 160_000, growth: [], cost: { usd: 1 }, rateLimits, display: DEFAULT_DISPLAY }))
-      .toBe('컨텍스트 █████░░░░░ 53% · 84k/160k')
-  })
-
-  test('[갈래6-3] 켜도 값이 없으면(구독 아님·비용 장부 없음) 생략한다', () => {
-    expect(composeStatus({ tokens: 84_000, limit: 160_000, growth: [], rateLimits: [], display: readDisplay({ show_delta: false, show_cost: true, show_rate_limits: true }) }))
-      .toBe('컨텍스트 █████░░░░░ 53% · 84k/160k')
-  })
-})
-
-describe('내역 패널', () => {
-  test('[갈래7-1] 사용 행은 기준 대비 %, 남은 공간·압축 예비분은 토큰만, 지연 로드 행은 맨 뒤에 표시만 한다', () => {
-    const rows = detailRows([
-      { name: 'Free space', tokens: 70_000, kind: 'free' },
-      { name: 'MCP tools (deferred)', tokens: 12_000, kind: 'deferred' },
-      { name: 'System prompt', tokens: 8_000, kind: 'used' },
-      { name: 'Messages', tokens: 50_000, kind: 'used' },
-      { name: 'Autocompact buffer', tokens: 32_000, kind: 'buffer' },
-    ], 160_000)
-
-    expect(rows).toEqual([
-      { name: 'Free space', tokens: '70k' },
-      { name: 'System prompt', tokens: '8k', percent: '5%' },
-      { name: 'Messages', tokens: '50k', percent: '31%' },
-      { name: 'Autocompact buffer', tokens: '32k' },
-      { name: 'MCP tools (deferred) · 지연 로드', tokens: '12k' },
-    ])
-  })
-
-  test('[갈래7-1] 머리줄은 측정 창의 실제 종류와 자동 압축 임계치를 따로 밝힌다', () => {
-    expect(detailHeader(58_000, 200_000, '모델 윈도우', 167_000)).toBe('사용 58k / 모델 윈도우 200k (29%) · 자동 압축 167k')
-    expect(detailHeader(58_000, 160_000, '압축 창', 127_000)).toBe('사용 58k / 압축 창 160k (36%) · 자동 압축 127k')
-    expect(detailHeader(58_000, 200_000, '모델 윈도우', undefined)).toBe('사용 58k / 모델 윈도우 200k (29%) · 자동 압축 꺼짐')
-  })
-})
-
-describe('자동 압축 판정', () => {
-  test('[갈래8-1] 기본값은 꺼짐·90% 이고 꺼져 있으면 시도하지 않는다', () => {
-    const setting = readAutoCompact({})
-
-    expect(setting).toEqual({ isEnabled: false, percent: 90 })
-    expect(shouldAutoCompact(99, setting, false)).toBe(false)
-  })
-
-  test('[갈래8-2] 켜져 있고 N% 이상이며 아직 시도하지 않았으면 시도한다', () => {
-    const setting = readAutoCompact({ auto_compact: true, auto_compact_percent: 85 })
-
-    expect(shouldAutoCompact(84, setting, false)).toBe(false)
-    expect(shouldAutoCompact(85, setting, false)).toBe(true)
-  })
-
-  test('[갈래8-3] 이미 시도한 구간에서는 다시 시도하지 않는다', () => {
-    expect(shouldAutoCompact(95, readAutoCompact({ auto_compact: true }), true)).toBe(false)
-  })
-
-  test('[갈래8-8] N 이 50~99 밖이면 가까운 경계로, 유한한 숫자가 아니면 기본값 90 으로 읽는다', () => {
-    expect(readAutoCompact({ auto_compact_percent: 120 }).percent).toBe(99)
-    expect(readAutoCompact({ auto_compact_percent: 10 }).percent).toBe(50)
-    expect(readAutoCompact({ auto_compact_percent: Number.NaN }).percent).toBe(90)
-    expect(readAutoCompact({ auto_compact_percent: Number.POSITIVE_INFINITY }).percent).toBe(90)
-    expect(readAutoCompact({ auto_compact_percent: 75 }).percent).toBe(75)
+  test('[갈래3-3] 숫자 effort 는 숫자 그대로 쓴다', () => {
+    expect(composeStatus({ model: 'Opus 5.5', effort: 32_000, tokens: 1_000, limit: 200_000 }))
+      .toBe('Opus 5.5 · effort 32000 · 컨텍스트 ░░░░░░░░░░ 1% · 1k/200k')
   })
 })
