@@ -1,5 +1,5 @@
 import type { On, SessionContextBreakdown, TurnStepInput } from 'claude-code'
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, test } from 'claude-code/testing'
 
 type StubOptions = {
   // 자동 압축 임계치 — 없으면 자동 압축이 꺼진 세션
@@ -70,7 +70,6 @@ const runStep = async ($: { turn: { step: (e: TurnStepInput) => AsyncGenerator<u
 test('[갈래4-1] 세션 시작 시 모델과 effort – 로 그린다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
-  mock.store(on)
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
 
@@ -80,7 +79,6 @@ test('[갈래4-1] 세션 시작 시 모델과 effort – 로 그린다', async (
 test('[갈래4-2] 측정값이 바뀌면 모델·effort 를 포함해 다시 그린다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
-  mock.store(on)
 
   await $.session.measure(MEASURE)
 
@@ -90,7 +88,6 @@ test('[갈래4-2] 측정값이 바뀌면 모델·effort 를 포함해 다시 그
 test('[갈래4-2] 자동 압축이 꺼진 세션은 모델 윈도우 기준, 첫 응답 전에는 기준 크기만 그린다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown, { threshold: undefined })
-  mock.store(on)
 
   await $.session.measure(MEASURE)
   await $.session.measure({ context: { window: 1_000_000 }, rateLimits: [], changed: ['context'] })
@@ -104,21 +101,23 @@ test('[갈래4-2] 자동 압축이 꺼진 세션은 모델 윈도우 기준, 첫
 test('[갈래4-3] 메인 요청의 effort 와 바뀐 모델이 상태 줄에 반영된다', async ($, on) => {
   const shown: (string | undefined)[] = []
   const model = stubEngine(on, shown)
-  mock.store(on)
 
   await $.session.measure(MEASURE)
   await runStep($, step({ effort: 'high' }))
   model.name = 'Sonnet 5.5'
-  await runStep($, step({ index: 1, model: 'claude-sonnet-5-5', effort: 'low' }))
+  await runStep($, step({ index: 1, model: 'claude-sonnet-5-5', effort: 'high' }))
+  await runStep($, step({ index: 2, model: 'claude-sonnet-5-5', effort: 'low' }))
 
-  expect(shown.at(-1)).toBe('Sonnet 5.5 · effort low · 컨텍스트 █████░░░░░ 53% · 84k/160k')
-  expect(shown).toContain('Opus 5.5 · effort high · 컨텍스트 █████░░░░░ 53% · 84k/160k')
+  expect(shown.slice(1)).toEqual([
+    'Opus 5.5 · effort high · 컨텍스트 █████░░░░░ 53% · 84k/160k',
+    'Sonnet 5.5 · effort high · 컨텍스트 █████░░░░░ 53% · 84k/160k',
+    'Sonnet 5.5 · effort low · 컨텍스트 █████░░░░░ 53% · 84k/160k',
+  ])
 })
 
 test('[갈래4-4] 서브에이전트 요청은 반영하지 않는다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
-  mock.store(on)
 
   await $.session.measure(MEASURE)
   await runStep($, step({ effort: 'max', agentId: 'agent-1' }))
@@ -138,7 +137,6 @@ test('[갈래4-5] 메인 대화 압축이 끝나면 모델·effort 를 포함해
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
   stubCompaction(on)
-  mock.store(on)
 
   await $.session.compact({ trigger: 'manual', messages: SUMMARY })
 
@@ -149,7 +147,6 @@ test('[갈래4-6] /clear 직후 다시 그린다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
   stubCompaction(on)
-  mock.store(on)
 
   await $.classic.SessionStart({ source: 'clear' })
 
@@ -159,7 +156,6 @@ test('[갈래4-6] /clear 직후 다시 그린다', async ($, on) => {
 test('[갈래4-7] 비용·플랜 한도만 바뀐 측정에는 다시 그리지 않는다', async ($, on) => {
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
-  mock.store(on)
 
   await $.session.measure({
     context: { tokens: 10, window: 200_000, percent: 0 },
@@ -175,7 +171,6 @@ test('[갈래4-8] precompute·서브에이전트 압축에는 다시 그리지 �
   const shown: (string | undefined)[] = []
   stubEngine(on, shown)
   stubCompaction(on)
-  mock.store(on)
 
   await $.session.compact({ trigger: 'precompute', messages: SUMMARY })
   await $.session.compact({ trigger: 'auto', agentId: 'agent-1', messages: SUMMARY })
