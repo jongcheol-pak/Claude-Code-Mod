@@ -26,7 +26,6 @@ const breakdown = (threshold: number | undefined): SessionContextBreakdown => ({
   apiUsage: null,
 })
 
-// 엔진 대역: 상태 줄 기록 · 측정 응답 · 현재 사용량 · /model 표기 모델 이름(model.name 으로 바꾼다)
 const stubEngine = (on: On, shown: (string | undefined)[], options: StubOptions = {}) => {
   const threshold = 'threshold' in options ? options.threshold : 160_000
   const tokens = options.tokens ?? 50_000
@@ -63,10 +62,8 @@ const step = (fields: Partial<TurnStepInput> = {}): TurnStepInput => ({
   ...fields,
 })
 
-// 스트림을 끝까지 읽어야 훅이 끝난다
 const runStep = async ($: { turn: { step: (e: TurnStepInput) => AsyncGenerator<unknown, unknown> } }, e: TurnStepInput) => {
   for await (const _ of $.turn.step(e)) {
-    // 청크는 쓰지 않는다
   }
 }
 
@@ -129,7 +126,6 @@ test('[갈래4-4] 서브에이전트 요청은 반영하지 않는다', async ($
   expect(shown).toEqual(['Opus 5.5 · effort – · 컨텍스트 █████░░░░░ 53% · 84k/160k'])
 })
 
-// 압축 결과는 메시지를 하나 이상 남겨야 한다 — 요약 한 줄로 대신한다
 const SUMMARY = [{ role: 'user' as const, text: '요약', toolUses: [] }]
 
 // 압축 대역 — 엔진이 요약을 설치한 것처럼 답한다 · clear 의 classic SessionStart 도 답한다
